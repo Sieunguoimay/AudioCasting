@@ -98,7 +98,11 @@ fn run_tray_windows(
             None,
             hinstance,
             None,
-        )?;
+        );
+
+        if hwnd.0 as isize == 0 {
+            return Err("Failed to create tray window".into());
+        }
 
         // Store state pointer in window user data
         let state_box = Box::new(TrayState {

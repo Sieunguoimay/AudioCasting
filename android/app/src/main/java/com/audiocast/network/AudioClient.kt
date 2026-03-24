@@ -14,7 +14,10 @@ import java.util.UUID
 
 private const val TAG = "AudioClient"
 private const val CONNECT_TIMEOUT_MS = 5000
-private const val SOCKET_TIMEOUT_MS = 10000
+private const val SOCKET_TIMEOUT_MS = 30000 // 30s fallback timeout
+private const val HEARTBEAT_INTERVAL_MS = 5000L // Send ping every 5 seconds
+private const val HEARTBEAT_TIMEOUT_MS = 30000L // Allow 30 seconds for pong response
+private const val MAX_MISSED_PONGS = 2 // Disconnect after 2 consecutive missed pongs
 
 enum class ConnectionState {
     DISCONNECTED, CONNECTING, CONNECTED, ERROR, AUTH_REQUIRED
@@ -36,6 +39,9 @@ class AudioClient {
     private var output: DataOutputStream? = null
     private var input: DataInputStream? = null
     private var readJob: Job? = null
+    private var heartbeatJob: Job? = null
+    private var lastPongTime = MutableStateFlow(0L)
+    private var missedPongCount = 0
 
     private val _state = MutableStateFlow(ConnectionState.DISCONNECTED)
     val state: StateFlow<ConnectionState> = _state
@@ -81,6 +87,7 @@ class AudioClient {
                 sock.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
                 sock.tcpNoDelay = true
                 sock.keepAlive = true
+                sock.soTimeout = SOCKET_TIMEOUT_MS
 
                 socket = sock
                 output = DataOutputStream(sock.getOutputStream())
@@ -142,6 +149,8 @@ class AudioClient {
 
                 // Start reading audio frames
                 startReading()
+                // Start heartbeat
+                startHeartbeat()
 
             } catch (e: Exception) {
                 Log.e(TAG, "Connection failed: ${e.message}")
@@ -161,6 +170,9 @@ class AudioClient {
                 while (isActive && _state.value == ConnectionState.CONNECTED) {
                     val frameData = readFrame(inp)
 
+                    // Check if still connected after reading
+                    if (_state.value != ConnectionState.CONNECTED) break
+
                     when (frameData[0]) {
                         Protocol.FRAME_TYPE_AUDIO -> {
                             val frame = AudioFrame.deserialize(frameData)
@@ -177,9 +189,49 @@ class AudioClient {
                     }
                 }
             } catch (e: Exception) {
-                if (_state.value == ConnectionState.CONNECTED) {
-                    Log.e(TAG, "Read error: ${e.message}")
+                val currentState = _state.value
+                Log.e(TAG, "Read error (state=$currentState): ${e.message}")
+                if (currentState == ConnectionState.CONNECTED) {
                     _state.value = ConnectionState.ERROR
+                }
+            }
+        }
+    }
+
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        lastPongTime.value = System.currentTimeMillis()
+        missedPongCount = 0
+        heartbeatJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive && _state.value == ConnectionState.CONNECTED) {
+                delay(HEARTBEAT_INTERVAL_MS)
+
+                // Check if still connected before sending ping
+                if (_state.value != ConnectionState.CONNECTED) break
+
+                val timeSincePong = System.currentTimeMillis() - lastPongTime.value
+                if (timeSincePong > HEARTBEAT_TIMEOUT_MS) {
+                    missedPongCount++
+                    Log.w(TAG, "Heartbeat timeout ($missedPongCount/$MAX_MISSED_PONGS), no pong for ${timeSincePong}ms")
+                    if (missedPongCount >= MAX_MISSED_PONGS) {
+                        Log.e(TAG, "Too many missed pongs, disconnecting")
+                        _state.value = ConnectionState.ERROR
+                        disconnect()
+                        return@launch
+                    }
+                } else {
+                    missedPongCount = 0
+                }
+
+                try {
+                    val ping = ControlMessage.Ping(timestampUs = nowUs())
+                    output?.write(ping.serialize())
+                    output?.flush()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send ping: ${e.message}")
+                    _state.value = ConnectionState.ERROR
+                    disconnect()
+                    return@launch
                 }
             }
         }
@@ -199,6 +251,10 @@ class AudioClient {
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to send pong: ${e.message}")
                 }
+            }
+            is ControlMessage.Pong -> {
+                lastPongTime.value = System.currentTimeMillis()
+                missedPongCount = 0
             }
             is ControlMessage.Error -> {
                 Log.e(TAG, "Server error: ${msg.message}")
@@ -260,6 +316,8 @@ class AudioClient {
         try {
             readJob?.cancel()
             readJob = null
+            heartbeatJob?.cancel()
+            heartbeatJob = null
 
             // Send leave message
             if (_state.value == ConnectionState.CONNECTED) {

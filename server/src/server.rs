@@ -298,6 +298,9 @@ async fn handle_client(
     // Subscribe to encoded audio frames
     let mut audio_rx = state.audio_tx.subscribe();
 
+    // Create a channel for sending individual messages back to this client
+    let (client_tx, mut client_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+
     // Spawn a reader task for control messages from client
     let reader_client_id = client_id.clone();
     let reader_state = state.clone();
@@ -311,7 +314,15 @@ async fn handle_client(
                     match data[0] {
                         FRAME_TYPE_CONTROL => {
                             if let Ok(msg) = ControlMessage::deserialize(&data) {
-                                handle_control_message(&reader_client_id, msg, &reader_state);
+                                if let ControlMessage::Ping { timestamp_us } = msg {
+                                    let pong = ControlMessage::Pong {
+                                        ping_timestamp_us: timestamp_us,
+                                        pong_timestamp_us: now_us(),
+                                    };
+                                    let _ = client_tx.send(pong.serialize());
+                                } else {
+                                    handle_control_message(&reader_client_id, msg, &reader_state);
+                                }
                             }
                         }
                         FRAME_TYPE_CLOCK_SYNC => {
@@ -327,7 +338,10 @@ async fn handle_client(
         }
     });
 
-    // Stream audio frames to this client
+    // Stream audio frames to this client, with server-initiated keepalive pings
+    let mut keepalive_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+    keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     loop {
         tokio::select! {
             result = audio_rx.recv() => {
@@ -344,6 +358,20 @@ async fn handle_client(
                     Err(broadcast::error::RecvError::Closed) => {
                         break;
                     }
+                }
+            }
+            Some(msg_data) = client_rx.recv() => {
+                if let Err(e) = writer.write_all(&msg_data).await {
+                    debug!("Write error for control message {}: {}", client_name, e);
+                    break;
+                }
+            }
+            _ = keepalive_interval.tick() => {
+                // Server-initiated keepalive ping to detect dead connections
+                let ping = ControlMessage::Ping { timestamp_us: now_us() };
+                if let Err(e) = writer.write_all(&ping.serialize()).await {
+                    debug!("Keepalive write error for {}: {}", client_name, e);
+                    break;
                 }
             }
             _ = &mut reader_handle => {

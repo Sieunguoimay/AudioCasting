@@ -1,6 +1,8 @@
 package com.audiocast.viewmodel
 
 import android.app.Application
+import android.content.Intent
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,7 +17,9 @@ import kotlinx.coroutines.flow.*
 
 private const val TAG = "MainViewModel"
 private const val MAX_RECONNECT_ATTEMPTS = 5
-private const val RECONNECT_DELAY_MS = 3000L
+private const val RECONNECT_BASE_DELAY_MS = 3000L
+private const val RECONNECT_MAX_DELAY_MS = 30000L
+private const val RECONNECT_CONNECT_WAIT_MS = 6000L // Wait for TCP handshake + auth
 
 enum class AppMode { RECEIVER, SENDER }
 enum class CaptureSource { MICROPHONE, SYSTEM_AUDIO }
@@ -245,6 +249,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // Start stats polling
                 startStatsPolling(player)
 
+                // Start foreground service for background playback
+                startForegroundService(server.name, info.codec, info.sampleRate)
+
             } catch (e: Exception) {
                 Log.e(TAG, "Connection failed: ${e.message}")
                 _uiState.update { it.copy(errorMessage = e.message) }
@@ -301,6 +308,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         audioPlayer?.release()
         audioPlayer = null
         audioClient.disconnect()
+        stopForegroundService()
         _uiState.update { it.copy(connectedServer = null, connectionInfo = ConnectionInfo(), isReconnecting = false) }
     }
 
@@ -373,9 +381,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(reconnectAttempt = attempt) }
                 Log.i(TAG, "Auto-reconnect attempt $attempt/$MAX_RECONNECT_ATTEMPTS")
 
-                // Exponential backoff
-                val delayMs = RECONNECT_DELAY_MS * attempt
-                delay(delayMs)
+                // Exponential backoff with jitter
+                val baseDelay = (RECONNECT_BASE_DELAY_MS * (1L shl (attempt - 1).coerceAtMost(4)))
+                    .coerceAtMost(RECONNECT_MAX_DELAY_MS)
+                val jitter = (Math.random() * baseDelay * 0.3).toLong() // up to 30% jitter
+                delay(baseDelay + jitter)
 
                 if (!isActive) break
 
@@ -386,9 +396,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     audioClient.connect(host, port, _uiState.value.deviceName, pin)
 
-                    // Check if connected
-                    delay(2000) // give it time
-                    if (audioClient.state.value == ConnectionState.CONNECTED) {
+                    // Wait for connection with proper timeout
+                    val connected = withTimeoutOrNull(RECONNECT_CONNECT_WAIT_MS) {
+                        audioClient.state.first { it == ConnectionState.CONNECTED || it == ConnectionState.ERROR || it == ConnectionState.DISCONNECTED }
+                    }
+
+                    if (connected == ConnectionState.CONNECTED) {
                         Log.i(TAG, "Auto-reconnect successful on attempt $attempt")
 
                         val info = audioClient.connectionInfo.value
@@ -415,6 +428,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             startStatsPolling(player)
                         }
                         return@launch
+                    } else {
+                        Log.w(TAG, "Reconnect attempt $attempt: state=$connected")
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Reconnect attempt $attempt failed: ${e.message}")
@@ -566,6 +581,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateCaptureSource(source: CaptureSource) {
         _uiState.update { it.copy(captureSource = source) }
+    }
+
+    private fun startForegroundService(serverName: String, codec: String, sampleRate: Int) {
+        try {
+            val context = getApplication<Application>()
+            val intent = Intent(context, com.audiocast.service.AudioService::class.java).apply {
+                putExtra("server_name", serverName)
+                putExtra("codec", codec)
+                putExtra("sample_rate", sampleRate)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            Log.i(TAG, "Foreground service started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service: ${e.message}")
+        }
+    }
+
+    private fun stopForegroundService() {
+        try {
+            val context = getApplication<Application>()
+            val intent = Intent(context, com.audiocast.service.AudioService::class.java)
+            context.stopService(intent)
+            Log.i(TAG, "Foreground service stopped")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop foreground service: ${e.message}")
+        }
     }
 
     override fun onCleared() {

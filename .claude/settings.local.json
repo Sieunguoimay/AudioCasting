@@ -89,7 +89,12 @@
       "Bash(\"$ADB\" disconnect:*)",
       "Bash(\"$ADB\" -s 192.168.1.8:36903 install -r \"F:/Vuduydu/AppProjects/AudioCasting/android/app/build/outputs/apk/debug/app-debug.apk\")",
       "Bash(taskkill //F //IM audiocast-server.exe)",
-      "Bash(\"$ADB\" logcat:*)"
+      "Bash(\"$ADB\" logcat:*)",
+      "Bash(cargo check:*)",
+      "Bash(grep -E \"\\\\.exe$|^d\")",
+      "Bash(grep -E \"\\\\.\\(txt|cfg|ini|toml|yml|yaml|lock\\)$\")",
+      "Bash(pip install:*)",
+      "Bash(python -m PyInstaller audiocast.spec --noconfirm)"
     ]
   }
 }

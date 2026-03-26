@@ -8,6 +8,7 @@ use log::{debug, error, info, warn};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
@@ -40,6 +41,8 @@ pub struct ServerState {
     pub audio_tx: broadcast::Sender<Vec<u8>>,
     pub volume_groups: RwLock<HashMap<String, VolumeGroup>>,
     pub source_pid: RwLock<u32>,
+    /// Current audio peak level (0..10000 representing 0.0..1.0)
+    pub peak_level: AtomicU32,
 }
 
 impl ServerState {
@@ -149,6 +152,7 @@ pub async fn start_server(
         audio_tx: audio_tx.clone(),
         volume_groups: RwLock::new(HashMap::new()),
         source_pid: RwLock::new(initial_pid),
+        peak_level: AtomicU32::new(0),
     });
 
     // Spawn the encoder task: captures audio → encodes → broadcasts frames
@@ -171,6 +175,14 @@ pub async fn start_server(
         loop {
             match audio_rx.recv().await {
                 Ok(chunk) => {
+                    // Compute peak audio level from samples
+                    let peak = chunk.samples.iter()
+                        .map(|s| s.abs())
+                        .fold(0.0f32, f32::max);
+                    encoder_state.peak_level.store(
+                        (peak.min(1.0) * 10000.0) as u32, Ordering::Relaxed
+                    );
+
                     if encoder_state.client_count() == 0 {
                         continue; // Don't encode if no clients
                     }

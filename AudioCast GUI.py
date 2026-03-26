@@ -177,10 +177,22 @@ class AudioCastApp:
         self.api_data = None
         self.api_sources = None
         self.poll_id = None
+        self._peak_poll_id = None
 
         # Dashboard state tracking
         self._dash_vars = {}       # StringVar references for in-place updates
-        self._dash_shape = None    # structural fingerprint to detect layout changes
+
+        # Audio visualizer state
+        self._vu_history = [0.0] * 50  # rolling peak history for waveform
+        self._vu_canvas = None
+
+        # Connection history
+        self._history_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)) if not getattr(sys, 'frozen', False)
+            else os.path.dirname(sys.executable),
+            "connection_history.json"
+        )
+        self._connection_history = self._load_history()
 
         self.tray_icon = None
 
@@ -267,6 +279,46 @@ class AudioCastApp:
         except Exception:
             pass
         os._exit(0)
+
+    # ── Connection history ─────────────────────────────────────
+    def _load_history(self):
+        try:
+            with open(self._history_file, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _save_history(self):
+        try:
+            with open(self._history_file, "w") as f:
+                json.dump(self._connection_history, f, indent=2)
+        except Exception:
+            pass
+
+    def _add_to_history(self, address, name="", mode="server", codec="", port=0):
+        # Remove existing entry with same address
+        self._connection_history = [
+            h for h in self._connection_history if h.get("address") != address
+        ]
+        # Add to front
+        self._connection_history.insert(0, {
+            "address": address,
+            "name": name,
+            "mode": mode,
+            "codec": codec,
+            "port": port,
+            "last_used": time.strftime("%Y-%m-%d %H:%M"),
+        })
+        # Keep max 10 entries
+        self._connection_history = self._connection_history[:10]
+        self._save_history()
+
+    def _remove_from_history(self, address):
+        self._connection_history = [
+            h for h in self._connection_history if h.get("address") != address
+        ]
+        self._save_history()
+        self._show_settings()  # Refresh UI
 
     # ── UI Construction ───────────────────────────────────────
     def _build_ui(self):
@@ -427,7 +479,61 @@ class AudioCastApp:
             self._field_row(inner, "Server Address", self.receiver_addr, 1)
             tk.Label(inner, text="e.g. 192.168.1.100:4953", font=("Segoe UI", 8),
                      fg=COLORS["text_muted"], bg=COLORS["surface"]).grid(
-                         row=2, column=1, sticky="w", padx=(8, 0))
+                         row=3, column=1, sticky="w", padx=(8, 0))
+
+            # Connection history
+            history = self._connection_history
+            if history:
+                hist_card = tk.Frame(self.settings_container, bg=COLORS["surface"],
+                                     highlightbackground=COLORS["border"], highlightthickness=1)
+                hist_card.pack(fill="x", pady=(8, 0))
+                hist_inner = tk.Frame(hist_card, bg=COLORS["surface"])
+                hist_inner.pack(fill="x", padx=14, pady=12)
+
+                tk.Label(hist_inner, text="Recent Connections", font=("Segoe UI", 10, "bold"),
+                         fg=COLORS["text"], bg=COLORS["surface"]).pack(anchor="w", pady=(0, 8))
+
+                for hi, h in enumerate(history):
+                    hf = tk.Frame(hist_inner, bg=COLORS["surface"], cursor="hand2")
+                    hf.pack(fill="x", pady=2)
+
+                    # Left side: info
+                    left = tk.Frame(hf, bg=COLORS["surface"], cursor="hand2")
+                    left.pack(side="left", fill="x", expand=True)
+
+                    addr = h.get("address", "")
+                    name = h.get("name", "")
+                    display_name = name if name else addr
+                    tk.Label(left, text=display_name, font=("Segoe UI", 9, "bold"),
+                             fg=COLORS["accent_glow"], bg=COLORS["surface"],
+                             cursor="hand2").pack(anchor="w")
+
+                    detail_parts = [addr]
+                    if h.get("codec"):
+                        detail_parts.append(h["codec"].upper())
+                    if h.get("last_used"):
+                        detail_parts.append(h["last_used"])
+                    tk.Label(left, text="  |  ".join(detail_parts),
+                             font=("Segoe UI", 8), fg=COLORS["text_dim"],
+                             bg=COLORS["surface"], cursor="hand2").pack(anchor="w")
+
+                    # Right side: delete button
+                    del_btn = tk.Label(hf, text="x", font=("Segoe UI", 9),
+                                       fg=COLORS["text_muted"], bg=COLORS["surface"],
+                                       cursor="hand2", padx=6)
+                    del_btn.pack(side="right")
+                    del_btn.bind("<Button-1>", lambda e, a=addr: self._remove_from_history(a))
+
+                    # Click row to connect
+                    def on_click(e, address=addr):
+                        self.receiver_addr.set(address)
+                    for widget in [hf, left]:
+                        widget.bind("<Button-1>", on_click)
+                    for child in left.winfo_children():
+                        child.bind("<Button-1>", on_click)
+
+                    if hi < len(history) - 1:
+                        tk.Frame(hist_inner, bg=COLORS["border"], height=1).pack(fill="x", pady=2)
 
     def _card_heading(self, parent, text):
         tk.Label(parent, text=text, font=("Segoe UI", 11, "bold"), fg=COLORS["text"],
@@ -517,8 +623,15 @@ class AudioCastApp:
                 web_port = self.server_port.get() + 1
                 self.status_text.set(f"Server running on port {self.server_port.get()}")
                 self._start_polling(web_port)
+                self._add_to_history(
+                    f"localhost:{self.server_port.get()}",
+                    name=self.server_name.get(), mode="server",
+                    codec=self.server_codec.get(), port=self.server_port.get())
             else:
                 self.status_text.set(f"Connected to {self.receiver_addr.get()}")
+                self._add_to_history(
+                    self.receiver_addr.get(),
+                    name=self.receiver_name.get(), mode="receiver")
 
             threading.Thread(target=self._watch_process, daemon=True).start()
         except Exception as e:
@@ -527,6 +640,7 @@ class AudioCastApp:
 
     def stop_service(self):
         self._stop_polling()
+        self._stop_peak_polling()
         if self.server_process:
             try:
                 self.server_process.terminate()
@@ -544,8 +658,9 @@ class AudioCastApp:
         self.status_text.set("Stopped")
         self.api_data = None
         self.api_sources = None
-        self._dash_shape = None
         self._dash_vars = {}
+        self._vu_history = [0.0] * 50
+        self._vu_canvas = None
         for w in self.dashboard_frame.winfo_children():
             w.destroy()
 
@@ -558,14 +673,16 @@ class AudioCastApp:
 
     def _on_process_exit(self):
         self._stop_polling()
+        self._stop_peak_polling()
         self.running = False
         self.start_btn.config(text="Start Server" if self.mode.get() == "server" else "Connect")
         self.start_btn.set_danger(False)
         self._draw_status_dot(COLORS["red"])
         self.status_text.set("Service stopped unexpectedly")
         self.api_data = None
-        self._dash_shape = None
         self._dash_vars = {}
+        self._vu_history = [0.0] * 50
+        self._vu_canvas = None
         for w in self.dashboard_frame.winfo_children():
             w.destroy()
 
@@ -584,187 +701,77 @@ class AudioCastApp:
             return
 
         def fetch():
+            data = None
+            sources = None
             try:
                 url = f"http://localhost:{self._web_port}/api/status"
                 req = urllib.request.Request(url, headers={"Accept": "application/json"})
                 with urllib.request.urlopen(req, timeout=2) as resp:
                     data = json.loads(resp.read().decode())
-                self.root.after(0, lambda: self._on_api_data(data))
             except Exception:
-                pass  # server may not be ready yet
+                pass
 
-            # Also fetch sources
             try:
                 url2 = f"http://localhost:{self._web_port}/api/sources"
                 req2 = urllib.request.Request(url2, headers={"Accept": "application/json"})
                 with urllib.request.urlopen(req2, timeout=2) as resp2:
                     sources = json.loads(resp2.read().decode())
-                self.root.after(0, lambda: self._on_api_sources(sources))
             except Exception:
                 pass
+
+            # Single combined update on main thread
+            if data is not None:
+                self.root.after(0, lambda: self._on_api_update(data, sources))
 
         threading.Thread(target=fetch, daemon=True).start()
         self.poll_id = self.root.after(2000, self._poll_api)
 
-    def _on_api_data(self, data):
+    def _on_api_update(self, data, sources):
         self.api_data = data
+        if sources is not None:
+            self.api_sources = sources
         self._update_dashboard()
 
-    def _on_api_sources(self, sources):
-        self.api_sources = sources
-        self._update_dashboard()
-
-    # ── Dashboard: structural fingerprint ─────────────────────
-    def _compute_shape(self, data, sources):
-        """Return a hashable tuple representing the layout structure.
-        Only changes when clients/sources/groups are added or removed."""
-        client_ids = tuple(c.get("client_id", "") for c in data.get("clients", []))
-        group_names = tuple(g.get("name", "") for g in data.get("volume_groups", []))
-        source_pids = tuple(s.get("pid", 0) for s in (sources or [])[:10])
-        return (client_ids, group_names, source_pids)
-
-    # ── Dashboard: update or rebuild ──────────────────────────
+    # ── Dashboard: update ────────────────────────────────────
     def _update_dashboard(self):
         data = self.api_data
         if data is None:
             return
-
         sources = self.api_sources
-        new_shape = self._compute_shape(data, sources)
 
-        if new_shape != self._dash_shape:
-            # Structure changed — full rebuild, but save/restore scroll
-            scroll_pos = self.canvas.yview()
-            self._dash_shape = new_shape
-            self._build_dashboard(data, sources)
-            self.root.after(10, lambda: self.canvas.yview_moveto(scroll_pos[0]))
-        else:
-            # Same structure — just update values in-place
-            self._refresh_dashboard_values(data, sources)
+        # Build section containers once (never destroyed while running)
+        if not self._dash_vars.get("_built"):
+            self._build_dashboard_skeleton()
 
-    # ── Dashboard: build layout (only on structural change) ───
-    def _build_dashboard(self, data, sources):
-        for w in self.dashboard_frame.winfo_children():
-            w.destroy()
-        self._dash_vars = {}
+        # Update each section — only rebuild a section if its structure changed
+        self._update_info_section(data)
+        self._update_clients_section(data)
+        self._update_groups_section(data)
+        self._update_sources_section(data, sources)
 
-        # ── Audio Info Card ──
-        info_card = self._make_card(self.dashboard_frame, "Audio Stream")
-        info_card.pack(fill="x", pady=(0, 10))
+    def _build_dashboard_skeleton(self):
+        """Create the permanent section containers. Called once."""
+        self._dash_vars["_built"] = True
 
-        info_grid = tk.Frame(info_card, bg=COLORS["surface"])
-        info_grid.pack(fill="x")
+        # Each section gets a stable container frame that is never destroyed
+        self._info_container = tk.Frame(self.dashboard_frame, bg=COLORS["bg"])
+        self._info_container.pack(fill="x", pady=(0, 10))
 
-        stat_keys = ["codec", "sample_rate", "channels", "bitrate", "buffer_ms", "pin_auth"]
-        stat_labels = ["Codec", "Sample Rate", "Channels", "Bitrate", "Buffer", "PIN Auth"]
+        # Audio visualizer (VU meter)
+        self._vu_container = tk.Frame(self.dashboard_frame, bg=COLORS["bg"])
+        self._vu_container.pack(fill="x", pady=(0, 10))
+        self._build_vu_meter()
 
-        for i, (key, label) in enumerate(zip(stat_keys, stat_labels)):
-            col = i % 3
-            row = i // 3
-            cell = tk.Frame(info_grid, bg=COLORS["surface"])
-            cell.grid(row=row, column=col, sticky="ew", padx=(0, 12), pady=4)
-            tk.Label(cell, text=label, font=("Segoe UI", 8), fg=COLORS["text_muted"],
-                     bg=COLORS["surface"]).pack(anchor="w")
-            sv = tk.StringVar()
-            self._dash_vars[f"stat_{key}"] = sv
-            tk.Label(cell, textvariable=sv, font=("Segoe UI", 11, "bold"), fg=COLORS["text"],
-                     bg=COLORS["surface"]).pack(anchor="w")
-        info_grid.columnconfigure(0, weight=1)
-        info_grid.columnconfigure(1, weight=1)
-        info_grid.columnconfigure(2, weight=1)
+        self._clients_container = tk.Frame(self.dashboard_frame, bg=COLORS["bg"])
+        self._clients_container.pack(fill="x", pady=(0, 10))
 
-        # ── Connected Clients Card ──
-        clients = data.get("clients", [])
-        self._dash_vars["clients_title"] = sv_title = tk.StringVar()
-        clients_card = self._make_card(self.dashboard_frame, "", title_var=sv_title)
-        clients_card.pack(fill="x", pady=(0, 10))
+        self._groups_container = tk.Frame(self.dashboard_frame, bg=COLORS["bg"])
+        self._groups_container.pack(fill="x", pady=(0, 10))
 
-        if not clients:
-            tk.Label(clients_card, text="No clients connected",
-                     font=("Segoe UI", 9), fg=COLORS["text_muted"],
-                     bg=COLORS["surface"]).pack(pady=8)
-        else:
-            for ci, c in enumerate(clients):
-                cid = c.get("client_id", str(ci))
-                client_row = tk.Frame(clients_card, bg=COLORS["surface"])
-                client_row.pack(fill="x", pady=(0, 6))
+        self._sources_container = tk.Frame(self.dashboard_frame, bg=COLORS["bg"])
+        self._sources_container.pack(fill="x", pady=(0, 10))
 
-                left = tk.Frame(client_row, bg=COLORS["surface"])
-                left.pack(side="left", fill="x", expand=True)
-
-                name_frame = tk.Frame(left, bg=COLORS["surface"])
-                name_frame.pack(anchor="w")
-
-                dot = tk.Canvas(name_frame, width=8, height=8, bg=COLORS["surface"], highlightthickness=0)
-                dot.pack(side="left", padx=(0, 6), pady=2)
-                dot.create_oval(0, 0, 8, 8, fill=COLORS["green"], outline=COLORS["green"])
-
-                sv_name = tk.StringVar()
-                self._dash_vars[f"client_{cid}_name"] = sv_name
-                tk.Label(name_frame, textvariable=sv_name,
-                         font=("Segoe UI", 10, "bold"), fg=COLORS["accent_glow"],
-                         bg=COLORS["surface"]).pack(side="left")
-
-                sv_group = tk.StringVar()
-                self._dash_vars[f"client_{cid}_group"] = sv_group
-                tk.Label(name_frame, textvariable=sv_group,
-                         font=("Segoe UI", 8), fg=COLORS["accent_dim"],
-                         bg=COLORS["surface"]).pack(side="left")
-
-                sv_detail = tk.StringVar()
-                self._dash_vars[f"client_{cid}_detail"] = sv_detail
-                tk.Label(left, textvariable=sv_detail, font=("Segoe UI", 8),
-                         fg=COLORS["text_dim"], bg=COLORS["surface"]).pack(anchor="w", padx=(14, 0))
-
-                if ci < len(clients) - 1:
-                    tk.Frame(clients_card, bg=COLORS["border"], height=1).pack(fill="x", pady=(4, 2))
-
-        # ── Volume Groups Card ──
-        groups = data.get("volume_groups", [])
-        if groups:
-            groups_card = self._make_card(self.dashboard_frame, "Volume Groups")
-            groups_card.pack(fill="x", pady=(0, 10))
-
-            for g in groups:
-                gname = g["name"]
-                gf = tk.Frame(groups_card, bg=COLORS["surface"])
-                gf.pack(fill="x", pady=2)
-                tk.Label(gf, text=gname, font=("Segoe UI", 10, "bold"),
-                         fg=COLORS["accent"], bg=COLORS["surface"]).pack(side="left")
-                sv_ginfo = tk.StringVar()
-                self._dash_vars[f"group_{gname}_info"] = sv_ginfo
-                tk.Label(gf, textvariable=sv_ginfo,
-                         font=("Segoe UI", 9), fg=COLORS["text_dim"],
-                         bg=COLORS["surface"]).pack(side="right")
-
-        # ── Audio Sources Card ──
-        if sources:
-            src_card = self._make_card(self.dashboard_frame, "Audio Sources")
-            src_card.pack(fill="x", pady=(0, 10))
-
-            for s in sources[:10]:
-                pid = s.get("pid", 0)
-                sf = tk.Frame(src_card, bg=COLORS["surface"], cursor="hand2")
-                sf.pack(fill="x", pady=1)
-
-                src_dot = tk.Canvas(sf, width=6, height=6, bg=COLORS["surface"], highlightthickness=0)
-                src_dot.pack(side="left", padx=(0, 8), pady=6)
-                self._dash_vars[f"src_{pid}_dot"] = src_dot
-
-                sv_src_name = tk.StringVar()
-                self._dash_vars[f"src_{pid}_name"] = sv_src_name
-                src_lbl = tk.Label(sf, textvariable=sv_src_name, font=("Segoe UI", 9),
-                                   bg=COLORS["surface"], anchor="w")
-                src_lbl.pack(side="left", fill="x", expand=True)
-                self._dash_vars[f"src_{pid}_lbl"] = src_lbl
-
-                tk.Label(sf, text=f"PID {pid}", font=("Segoe UI", 8),
-                         fg=COLORS["text_muted"], bg=COLORS["surface"]).pack(side="right")
-
-                for widget in [sf, src_dot]:
-                    widget.bind("<Button-1>", lambda e, p=pid: self._set_audio_source(p))
-
-        # ── Web UI link ──
+        # Web UI link (static, never changes)
         if self.running and self.mode.get() == "server":
             link_frame = tk.Frame(self.dashboard_frame, bg=COLORS["bg"])
             link_frame.pack(fill="x", pady=(4, 0))
@@ -775,71 +782,330 @@ class AudioCastApp:
             link.pack(anchor="w")
             link.bind("<Button-1>", lambda e: os.startfile(web_url) if hasattr(os, 'startfile') else None)
 
-        # Now populate values
-        self._refresh_dashboard_values(data, sources)
+        # Track shapes per section
+        self._info_built = False
+        self._clients_shape = None
+        self._groups_shape = None
+        self._sources_shape = None
 
-    # ── Dashboard: update values in-place (no layout change) ──
-    def _refresh_dashboard_values(self, data, sources):
-        v = self._dash_vars
-        if not v:
+    # ── Audio Visualizer (VU Meter) ─────────────────────────
+    def _build_vu_meter(self):
+        outer = tk.Frame(self._vu_container, bg=COLORS["surface"],
+                         highlightbackground=COLORS["border"], highlightthickness=1)
+        outer.pack(fill="x")
+        inner = tk.Frame(outer, bg=COLORS["surface"])
+        inner.pack(fill="x", padx=14, pady=12)
+
+        # Title row with dB label
+        title_row = tk.Frame(inner, bg=COLORS["surface"])
+        title_row.pack(fill="x", pady=(0, 6))
+        tk.Label(title_row, text="Audio Level", font=("Segoe UI", 10, "bold"),
+                 fg=COLORS["text"], bg=COLORS["surface"]).pack(side="left")
+        self._vu_db_var = tk.StringVar(value="-- dB")
+        tk.Label(title_row, textvariable=self._vu_db_var, font=("Segoe UI", 9),
+                 fg=COLORS["text_dim"], bg=COLORS["surface"]).pack(side="right")
+
+        # VU bar (horizontal level meter)
+        self._vu_bar = tk.Canvas(inner, height=12, bg=COLORS["input_bg"], highlightthickness=0)
+        self._vu_bar.pack(fill="x", pady=(0, 6))
+
+        # Waveform canvas (rolling history)
+        self._vu_canvas = tk.Canvas(inner, height=48, bg=COLORS["input_bg"], highlightthickness=0)
+        self._vu_canvas.pack(fill="x")
+
+        # Start fast polling for peak level
+        self._start_peak_polling()
+
+    def _start_peak_polling(self):
+        self._poll_peak()
+
+    def _stop_peak_polling(self):
+        if self._peak_poll_id:
+            self.root.after_cancel(self._peak_poll_id)
+            self._peak_poll_id = None
+
+    def _poll_peak(self):
+        if not self.running or not HTTP_AVAILABLE:
             return
 
-        # Audio stream stats
-        def _set(key, val):
-            sv = v.get(key)
-            if sv:
-                sv.set(val)
+        def fetch_peak():
+            try:
+                url = f"http://localhost:{self._web_port}/api/status"
+                req = urllib.request.Request(url, headers={"Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=1) as resp:
+                    data = json.loads(resp.read().decode())
+                peak = data.get("peak_level", 0.0)
+                self.root.after(0, lambda: self._update_vu(peak))
+            except Exception:
+                pass
 
-        _set("stat_codec", data.get("codec", "-").upper())
-        _set("stat_sample_rate", f"{data.get('sample_rate', '-')} Hz")
-        _set("stat_channels", "Stereo" if data.get("channels") == 2 else "Mono")
-        _set("stat_bitrate", f"{data.get('bitrate', '-')} kbps")
-        _set("stat_buffer_ms", f"{data.get('buffer_ms', '-')} ms")
-        _set("stat_pin_auth", "Enabled" if data.get("requires_pin") else "Disabled")
+        threading.Thread(target=fetch_peak, daemon=True).start()
+        self._peak_poll_id = self.root.after(150, self._poll_peak)
 
-        # Clients title
+    def _update_vu(self, peak):
+        # Update rolling history
+        self._vu_history.append(peak)
+        self._vu_history = self._vu_history[-50:]
+
+        # dB display
+        if peak > 0.0001:
+            import math
+            db = 20 * math.log10(peak)
+            self._vu_db_var.set(f"{db:.1f} dB")
+        else:
+            self._vu_db_var.set("-inf dB")
+
+        # Draw VU bar
+        bar = self._vu_bar
+        bar.delete("all")
+        w = bar.winfo_width()
+        h = bar.winfo_height()
+        if w > 1:
+            bar_w = int(peak * w)
+            # Color gradient: green -> yellow -> red
+            if peak < 0.5:
+                color = COLORS["green"]
+            elif peak < 0.8:
+                color = COLORS["orange"]
+            else:
+                color = COLORS["red"]
+            bar.create_rectangle(0, 0, bar_w, h, fill=color, outline="")
+            # Peak markers at -6dB (0.5) and -3dB (0.7)
+            for marker in [0.5, 0.7, 0.9]:
+                mx = int(marker * w)
+                bar.create_line(mx, 0, mx, h, fill=COLORS["border_light"], width=1)
+
+        # Draw waveform
+        cv = self._vu_canvas
+        cv.delete("all")
+        cw = cv.winfo_width()
+        ch = cv.winfo_height()
+        if cw > 1 and len(self._vu_history) > 1:
+            points = []
+            step = cw / (len(self._vu_history) - 1)
+            for i, val in enumerate(self._vu_history):
+                x = i * step
+                y = ch - (val * ch * 0.9) - 2
+                points.append(x)
+                points.append(y)
+
+            if len(points) >= 4:
+                cv.create_line(points, fill=COLORS["accent"], width=2, smooth=True)
+                # Fill under the curve
+                fill_points = [0, ch] + points + [cw, ch]
+                cv.create_polygon(fill_points, fill=COLORS["accent_dim"],
+                                  outline="", stipple="gray25")
+
+    # ── Info section (built once, never changes structure) ────
+    def _update_info_section(self, data):
+        v = self._dash_vars
+        if not self._info_built:
+            self._info_built = True
+            card = self._make_card(self._info_container, "Audio Stream")
+            card.pack(fill="x")
+
+            info_grid = tk.Frame(card, bg=COLORS["surface"])
+            info_grid.pack(fill="x")
+
+            stat_keys = ["codec", "sample_rate", "channels", "bitrate", "buffer_ms", "pin_auth"]
+            stat_labels = ["Codec", "Sample Rate", "Channels", "Bitrate", "Buffer", "PIN Auth"]
+
+            for i, (key, label) in enumerate(zip(stat_keys, stat_labels)):
+                col = i % 3
+                row = i // 3
+                cell = tk.Frame(info_grid, bg=COLORS["surface"])
+                cell.grid(row=row, column=col, sticky="ew", padx=(0, 12), pady=4)
+                tk.Label(cell, text=label, font=("Segoe UI", 8), fg=COLORS["text_muted"],
+                         bg=COLORS["surface"]).pack(anchor="w")
+                sv = tk.StringVar()
+                v[f"stat_{key}"] = sv
+                tk.Label(cell, textvariable=sv, font=("Segoe UI", 11, "bold"), fg=COLORS["text"],
+                         bg=COLORS["surface"]).pack(anchor="w")
+            info_grid.columnconfigure(0, weight=1)
+            info_grid.columnconfigure(1, weight=1)
+            info_grid.columnconfigure(2, weight=1)
+
+        # Update values
+        v["stat_codec"].set(data.get("codec", "-").upper())
+        v["stat_sample_rate"].set(f"{data.get('sample_rate', '-')} Hz")
+        v["stat_channels"].set("Stereo" if data.get("channels") == 2 else "Mono")
+        v["stat_bitrate"].set(f"{data.get('bitrate', '-')} kbps")
+        v["stat_buffer_ms"].set(f"{data.get('buffer_ms', '-')} ms")
+        v["stat_pin_auth"].set("Enabled" if data.get("requires_pin") else "Disabled")
+
+    # ── Clients section (rebuild only when client list changes) ──
+    def _update_clients_section(self, data):
+        v = self._dash_vars
+        clients = data.get("clients", [])
+        client_ids = tuple(c.get("client_id", "") for c in clients)
+
+        if client_ids != self._clients_shape:
+            self._clients_shape = client_ids
+            # Rebuild only this section's content
+            for w in self._clients_container.winfo_children():
+                w.destroy()
+            # Remove old client vars
+            for key in [k for k in v if k.startswith("client_")]:
+                del v[key]
+
+            sv_title = tk.StringVar()
+            v["clients_title"] = sv_title
+            card = self._make_card(self._clients_container, "", title_var=sv_title)
+            card.pack(fill="x")
+
+            if not clients:
+                tk.Label(card, text="No clients connected",
+                         font=("Segoe UI", 9), fg=COLORS["text_muted"],
+                         bg=COLORS["surface"]).pack(pady=8)
+            else:
+                for ci, c in enumerate(clients):
+                    cid = c.get("client_id", str(ci))
+                    client_row = tk.Frame(card, bg=COLORS["surface"])
+                    client_row.pack(fill="x", pady=(0, 6))
+
+                    left = tk.Frame(client_row, bg=COLORS["surface"])
+                    left.pack(side="left", fill="x", expand=True)
+
+                    name_frame = tk.Frame(left, bg=COLORS["surface"])
+                    name_frame.pack(anchor="w")
+
+                    dot = tk.Canvas(name_frame, width=8, height=8, bg=COLORS["surface"], highlightthickness=0)
+                    dot.pack(side="left", padx=(0, 6), pady=2)
+                    dot.create_oval(0, 0, 8, 8, fill=COLORS["green"], outline=COLORS["green"])
+
+                    sv_name = tk.StringVar()
+                    v[f"client_{cid}_name"] = sv_name
+                    tk.Label(name_frame, textvariable=sv_name,
+                             font=("Segoe UI", 10, "bold"), fg=COLORS["accent_glow"],
+                             bg=COLORS["surface"]).pack(side="left")
+
+                    sv_group = tk.StringVar()
+                    v[f"client_{cid}_group"] = sv_group
+                    tk.Label(name_frame, textvariable=sv_group,
+                             font=("Segoe UI", 8), fg=COLORS["accent_dim"],
+                             bg=COLORS["surface"]).pack(side="left")
+
+                    sv_detail = tk.StringVar()
+                    v[f"client_{cid}_detail"] = sv_detail
+                    tk.Label(left, textvariable=sv_detail, font=("Segoe UI", 8),
+                             fg=COLORS["text_dim"], bg=COLORS["surface"]).pack(anchor="w", padx=(14, 0))
+
+                    if ci < len(clients) - 1:
+                        tk.Frame(card, bg=COLORS["border"], height=1).pack(fill="x", pady=(4, 2))
+
+        # Update values
         client_count = data.get("client_count", 0)
-        _set("clients_title", f"Connected Clients ({client_count})")
+        v["clients_title"].set(f"Connected Clients ({client_count})")
 
-        # Client details
-        for ci, c in enumerate(data.get("clients", [])):
+        for ci, c in enumerate(clients):
             cid = c.get("client_id", str(ci))
-            _set(f"client_{cid}_name", c.get("client_name", "Unknown"))
+            sv = v.get(f"client_{cid}_name")
+            if sv:
+                sv.set(c.get("client_name", "Unknown"))
+            sv = v.get(f"client_{cid}_group")
+            if sv:
+                group = c.get("volume_group")
+                sv.set(f"  [{group}]" if group else "")
+            sv = v.get(f"client_{cid}_detail")
+            if sv:
+                addr = c.get("addr", "")
+                vol = f"{int(c.get('volume', 0) * 100)}%"
+                rtt = c.get("clock_rtt_us")
+                rtt_str = f"{rtt} \u00b5s" if rtt is not None else "syncing"
+                sv.set(f"{addr}  |  Vol: {vol}  |  RTT: {rtt_str}")
 
-            group = c.get("volume_group")
-            _set(f"client_{cid}_group", f"  [{group}]" if group else "")
+    # ── Groups section (rebuild only when group list changes) ──
+    def _update_groups_section(self, data):
+        v = self._dash_vars
+        groups = data.get("volume_groups", [])
+        group_names = tuple(g.get("name", "") for g in groups)
 
-            addr = c.get("addr", "")
-            vol = f"{int(c.get('volume', 0) * 100)}%"
-            rtt = c.get("clock_rtt_us")
-            rtt_str = f"{rtt} \u00b5s" if rtt is not None else "syncing"
-            _set(f"client_{cid}_detail", f"{addr}  |  Vol: {vol}  |  RTT: {rtt_str}")
+        if group_names != self._groups_shape:
+            self._groups_shape = group_names
+            for w in self._groups_container.winfo_children():
+                w.destroy()
+            for key in [k for k in v if k.startswith("group_")]:
+                del v[key]
 
-        # Volume groups
-        for g in data.get("volume_groups", []):
+            if groups:
+                card = self._make_card(self._groups_container, "Volume Groups")
+                card.pack(fill="x")
+                for g in groups:
+                    gname = g["name"]
+                    gf = tk.Frame(card, bg=COLORS["surface"])
+                    gf.pack(fill="x", pady=2)
+                    tk.Label(gf, text=gname, font=("Segoe UI", 10, "bold"),
+                             fg=COLORS["accent"], bg=COLORS["surface"]).pack(side="left")
+                    sv_ginfo = tk.StringVar()
+                    v[f"group_{gname}_info"] = sv_ginfo
+                    tk.Label(gf, textvariable=sv_ginfo,
+                             font=("Segoe UI", 9), fg=COLORS["text_dim"],
+                             bg=COLORS["surface"]).pack(side="right")
+
+        for g in groups:
             gname = g["name"]
-            vol_pct = int(g.get("volume", 0) * 100)
-            _set(f"group_{gname}_info", f"{vol_pct}%  ({g.get('member_count', 0)} devices)")
+            sv = v.get(f"group_{gname}_info")
+            if sv:
+                vol_pct = int(g.get("volume", 0) * 100)
+                sv.set(f"{vol_pct}%  ({g.get('member_count', 0)} devices)")
 
-        # Audio sources — update active indicator and name color
+    # ── Sources section (rebuild only when source PIDs change) ──
+    def _update_sources_section(self, data, sources):
+        v = self._dash_vars
+        source_list = (sources or [])[:10]
+        source_pids = tuple(s.get("pid", 0) for s in source_list)
+
+        if source_pids != self._sources_shape:
+            self._sources_shape = source_pids
+            for w in self._sources_container.winfo_children():
+                w.destroy()
+            for key in [k for k in v if k.startswith("src_")]:
+                del v[key]
+
+            if source_list:
+                card = self._make_card(self._sources_container, "Audio Sources")
+                card.pack(fill="x")
+                for s in source_list:
+                    pid = s.get("pid", 0)
+                    sf = tk.Frame(card, bg=COLORS["surface"], cursor="hand2")
+                    sf.pack(fill="x", pady=1)
+
+                    src_dot = tk.Canvas(sf, width=6, height=6, bg=COLORS["surface"], highlightthickness=0)
+                    src_dot.pack(side="left", padx=(0, 8), pady=6)
+                    v[f"src_{pid}_dot"] = src_dot
+
+                    sv_src_name = tk.StringVar()
+                    v[f"src_{pid}_name"] = sv_src_name
+                    src_lbl = tk.Label(sf, textvariable=sv_src_name, font=("Segoe UI", 9),
+                                       bg=COLORS["surface"], anchor="w")
+                    src_lbl.pack(side="left", fill="x", expand=True)
+                    v[f"src_{pid}_lbl"] = src_lbl
+
+                    tk.Label(sf, text=f"PID {pid}", font=("Segoe UI", 8),
+                             fg=COLORS["text_muted"], bg=COLORS["surface"]).pack(side="right")
+
+                    for widget in [sf, src_dot]:
+                        widget.bind("<Button-1>", lambda e, p=pid: self._set_audio_source(p))
+
+        # Update values
         current_pid = data.get("source_pid", 0)
-        for s in (sources or [])[:10]:
+        for s in source_list:
             pid = s.get("pid", 0)
             is_active = pid == current_pid
 
             name = s.get("name", "Unknown")
             title = s.get("window_title", "")
             display = f"{name}" + (f" - {title}" if title else "")
-            _set(f"src_{pid}_name", display)
+            sv = v.get(f"src_{pid}_name")
+            if sv:
+                sv.set(display)
 
-            # Update dot color
             dot_canvas = v.get(f"src_{pid}_dot")
             if dot_canvas and isinstance(dot_canvas, tk.Canvas):
                 color = COLORS["accent"] if is_active else COLORS["text_muted"]
                 dot_canvas.delete("all")
                 dot_canvas.create_oval(0, 0, 6, 6, fill=color, outline=color)
 
-            # Update label color
             lbl = v.get(f"src_{pid}_lbl")
             if lbl and isinstance(lbl, tk.Label):
                 lbl.config(fg=COLORS["accent_glow"] if is_active else COLORS["text"])

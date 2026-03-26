@@ -22,6 +22,7 @@ struct ServerStatus {
     requires_pin: bool,
     client_count: usize,
     source_pid: u32,
+    peak_level: f32,
     clients: Vec<ClientStatus>,
     volume_groups: Vec<VolumeGroupStatus>,
 }
@@ -129,6 +130,7 @@ async fn get_status(State(state): State<Arc<ServerState>>) -> Json<ServerStatus>
         requires_pin: state.config.requires_auth(),
         client_count: clients.len(),
         source_pid: *state.source_pid.read(),
+        peak_level: state.peak_level.load(std::sync::atomic::Ordering::Relaxed) as f32 / 10000.0,
         clients,
         volume_groups,
     })

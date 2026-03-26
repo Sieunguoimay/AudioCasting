@@ -94,7 +94,13 @@
       "Bash(grep -E \"\\\\.exe$|^d\")",
       "Bash(grep -E \"\\\\.\\(txt|cfg|ini|toml|yml|yaml|lock\\)$\")",
       "Bash(pip install:*)",
-      "Bash(python -m PyInstaller audiocast.spec --noconfirm)"
+      "Bash(python -m PyInstaller audiocast.spec --noconfirm)",
+      "Bash(grep -r \"unimplemented\\\\|notimplemented\\\\|stub\\\\|placeholder\" /d/Vuduydu/PersonalProjects/AudioCasting --include=*.rs --include=*.kt)",
+      "Bash(grep -l \"AudioEncoder\\\\|MicCapture\\\\|SystemAudioCapture\\\\|AudioServer\\\\|ServerDiscovery\\\\|AudioCaptureService\" /d/Vuduydu/PersonalProjects/AudioCasting/android/app/src/main/java/com/audiocast/**/*.kt)",
+      "Bash(tasklist)",
+      "Bash(taskkill /F /PID 52816)",
+      "Bash(powershell \"Stop-Process -Name audiocast-server -Force -ErrorAction SilentlyContinue; Start-Sleep 3; cd 'D:\\\\Vuduydu\\\\PersonalProjects\\\\AudioCasting\\\\server'; cargo build --release 2>&1 | Select-Object -Last 3\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''AudioCast GUI.py'', doraise=True\\)\")"
     ]
   }
 }

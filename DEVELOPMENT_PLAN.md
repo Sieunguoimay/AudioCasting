@@ -1,4 +1,4 @@
-# AudioCasting — Development Plan
+# DeviceLink — Development Plan
 
 ## Overview
 
@@ -73,7 +73,7 @@ Support two codec modes:
 - Frame protocol: `[seq_u32][timestamp_u64][codec_u8][payload_len_u16][payload]`
 
 ### 1.4 Device Discovery
-- **mDNS/DNS-SD** (via `mdns-sd` crate or similar) — advertise `_audiocast._tcp.local`
+- **mDNS/DNS-SD** (via `mdns-sd` crate or similar) — advertise `_devicelink._tcp.local`
 - Clients auto-discover server on LAN without manual IP entry
 
 **Deliverable**: PC app that captures audio, encodes to Opus, and streams to a single TCP client.
@@ -88,7 +88,7 @@ Support two codec modes:
 - Alternatively: `AudioTrack` in low-latency mode (simpler, adequate for most cases)
 
 ### 2.2 Core Features
-- mDNS discovery — scan for `_audiocast._tcp.local` services
+- mDNS discovery — scan for `_devicelink._tcp.local` services
 - TCP connection to server, receive framed audio packets
 - Decode Opus (via `libopus` JNI) or FLAC (via `libFLAC` or built-in Android decoder)
 - Jitter buffer (20–100ms configurable) to smooth network variance
@@ -175,7 +175,7 @@ Support two codec modes:
 - Validates optional PIN
 
 #### 6C.2 mDNS Registration (`ServerDiscovery.kt`)
-- Registers `_audiocast._tcp.` via `NsdManager.registerService()`
+- Registers `_devicelink._tcp.` via `NsdManager.registerService()`
 - Includes TXT records: codec, sample_rate, channels
 - Existing Android/PC receivers auto-discover it
 
@@ -240,7 +240,7 @@ Support two codec modes:
 - Graceful fallback if permissions denied
 
 ### 6F. Discovery Integration
-- Android sender advertises same `_audiocast._tcp.` service type
+- Android sender advertises same `_devicelink._tcp.` service type
 - PC receiver can browse mDNS or connect directly via `--connect`
 - Add `browse()` method to Rust `discovery.rs`
 

@@ -1,4 +1,4 @@
-# AudioCasting — Development Progress
+# DeviceLink — Development Progress
 
 ## Phase 1: PC Server (Rust) — COMPLETED
 
@@ -13,7 +13,7 @@
 - `server/src/audio_capture.rs` — WASAPI loopback audio capture via cpal, outputs AudioChunk
 - `server/src/encoder.rs` — Opus and PCM encoding of audio chunks
 - `server/src/server.rs` — TCP streaming server, client session management, control messages
-- `server/src/discovery.rs` — mDNS/DNS-SD service advertisement (`_audiocast._tcp.local.`)
+- `server/src/discovery.rs` — mDNS/DNS-SD service advertisement (`_devicelink._tcp.local.`)
 - `server/src/clock_sync.rs` — NTP-like clock synchronization per client
 - `server/src/multicast.rs` — UDP multicast audio forwarder (optional)
 - `server/src/web_ui.rs` — Axum web UI with real-time status dashboard (HTML/JS embedded)
@@ -23,7 +23,7 @@
 - Opus encoding at configurable bitrate (64-512kbps), PCM fallback
 - TCP streaming to multiple clients simultaneously
 - Binary wire protocol with sequence numbers and presentation timestamps
-- mDNS service discovery advertisement (`_audiocast._tcp.local.`)
+- mDNS service discovery advertisement (`_devicelink._tcp.local.`)
 - Client join/leave/volume control messages (JSON over TCP)
 - NTP-like clock synchronization per-client (EMA smoothed offset/RTT)
 - Optional UDP multicast streaming (--multicast flag)
@@ -64,23 +64,23 @@ cargo run -- --source-pid 12345
 - `android/gradle/wrapper/gradle-wrapper.properties` — Gradle wrapper config
 - `android/app/build.gradle.kts` — App module with Compose, Concentus Opus, coroutines
 - `android/app/src/main/AndroidManifest.xml` — Permissions (internet, wifi, foreground service)
-- `android/app/src/main/java/com/audiocast/MainActivity.kt` — Entry activity with Compose
-- `android/app/src/main/java/com/audiocast/network/Protocol.kt` — Wire protocol (mirrors server)
-- `android/app/src/main/java/com/audiocast/network/Discovery.kt` — mDNS/NSD server discovery
-- `android/app/src/main/java/com/audiocast/network/AudioClient.kt` — TCP client with handshake
-- `android/app/src/main/java/com/audiocast/network/ClockSync.kt` — Client-side clock sync
-- `android/app/src/main/java/com/audiocast/audio/OpusDecoder.kt` — Opus decoding via Android MediaCodec
-- `android/app/src/main/java/com/audiocast/audio/JitterBuffer.kt` — Sequence-ordered jitter buffer
-- `android/app/src/main/java/com/audiocast/audio/AudioPlayer.kt` — AudioTrack playback engine
-- `android/app/src/main/java/com/audiocast/viewmodel/MainViewModel.kt` — MVVM state management
-- `android/app/src/main/java/com/audiocast/ui/MainScreen.kt` — Full Compose UI
-- `android/app/src/main/java/com/audiocast/ui/theme/Theme.kt` — Dark theme
+- `android/app/src/main/java/com/devicelink/MainActivity.kt` — Entry activity with Compose
+- `android/app/src/main/java/com/devicelink/network/Protocol.kt` — Wire protocol (mirrors server)
+- `android/app/src/main/java/com/devicelink/network/Discovery.kt` — mDNS/NSD server discovery
+- `android/app/src/main/java/com/devicelink/network/AudioClient.kt` — TCP client with handshake
+- `android/app/src/main/java/com/devicelink/network/ClockSync.kt` — Client-side clock sync
+- `android/app/src/main/java/com/devicelink/audio/OpusDecoder.kt` — Opus decoding via Android MediaCodec
+- `android/app/src/main/java/com/devicelink/audio/JitterBuffer.kt` — Sequence-ordered jitter buffer
+- `android/app/src/main/java/com/devicelink/audio/AudioPlayer.kt` — AudioTrack playback engine
+- `android/app/src/main/java/com/devicelink/viewmodel/MainViewModel.kt` — MVVM state management
+- `android/app/src/main/java/com/devicelink/ui/MainScreen.kt` — Full Compose UI
+- `android/app/src/main/java/com/devicelink/ui/theme/Theme.kt` — Dark theme
 - `android/app/src/main/res/values/strings.xml` — String resources
 - `android/app/src/main/res/values/themes.xml` — Android theme
 - `android/app/proguard-rules.pro` — ProGuard rules
 
 ### What Works
-- Auto-discovery of AudioCast servers via mDNS/NSD
+- Auto-discovery of DeviceLink servers via mDNS/NSD
 - Manual connection via IP address and port
 - TCP handshake (ClientJoin → ClientAccepted)
 - Opus decoding via Android MediaCodec (built-in, no external libraries)
@@ -113,8 +113,8 @@ export JAVA_HOME="/path/to/jdk-17"
 **Date:** 2026-03-21
 
 ### Files Created
-- `android/app/src/main/java/com/audiocast/network/MulticastReceiver.kt` — UDP multicast receiver
-- `android/app/src/main/java/com/audiocast/audio/SyncPlayer.kt` — Timestamp-synchronized player
+- `android/app/src/main/java/com/devicelink/network/MulticastReceiver.kt` — UDP multicast receiver
+- `android/app/src/main/java/com/devicelink/audio/SyncPlayer.kt` — Timestamp-synchronized player
 
 ### What Works
 - **Clock Synchronization**: NTP-like protocol between server and each client
@@ -253,7 +253,7 @@ export JAVA_HOME="/path/to/jdk-17"
 **Server Files Created:** `system_tray.rs`
 **Server Files Modified:** `main.rs`, `config.rs`, `Cargo.toml`
 - **Windows system tray icon**: uses Win32 `Shell_NotifyIcon` API via the `windows` crate
-- **Tooltip**: shows "AudioCast Server"
+- **Tooltip**: shows "DeviceLink Server"
 - **Context menu** (right-click):
   - Status line showing connected client count and codec
   - "Open Web UI" — launches browser to `http://localhost:<web_port>`
@@ -268,7 +268,7 @@ export JAVA_HOME="/path/to/jdk-17"
 ## Project Structure
 
 ```
-AudioCasting/
+DeviceLink/
 ├── DEVELOPMENT_PLAN.md
 ├── DEVELOPMENT_PROGRESS.md          ← you are here
 ├── .gitignore
@@ -293,7 +293,7 @@ AudioCasting/
         ├── build.gradle.kts
         └── src/main/
             ├── AndroidManifest.xml
-            ├── java/com/audiocast/
+            ├── java/com/devicelink/
             │   ├── MainActivity.kt
             │   ├── audio/
             │   │   ├── AudioPlayer.kt      # Basic playback + FLAC

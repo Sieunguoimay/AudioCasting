@@ -1,8 +1,8 @@
 [package]
-name = "audiocast-server"
+name = "devicelink-server"
 version = "0.1.0"
 edition = "2021"
-description = "AudioCasting PC Server - captures and streams system audio over LAN"
+description = "DeviceLink Server - captures and streams system audio over LAN"
 
 [dependencies]
 # Opus encoding
@@ -37,10 +37,6 @@ uuid = { version = "1", features = ["v4"] }
 # Time
 chrono = "0.4"
 
-# Web UI (Phase 4)
-axum = "0.7"
-tower-http = { version = "0.5", features = ["cors", "fs"] }
-
 # FLAC encoding (pure Rust, no native deps)
 flacenc = "0.4"
 
@@ -60,6 +56,16 @@ rand = "0.8"
 # Process listing for per-app audio
 sysinfo = "0.31"
 
+# Native GUI
+eframe = "0.31"
+egui = "0.31"
+egui_extras = "0.31"
+rfd = "0.15"
+crossbeam-channel = "0.5"
+
+# Web framework (used by receiver mode)
+axum = "0.7"
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.54", features = [
     "Win32_Media_Audio",
@@ -67,6 +73,7 @@ windows = { version = "0.54", features = [
     "Win32_Foundation",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
 ] }

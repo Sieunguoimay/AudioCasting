@@ -1,10 +1,10 @@
 use clap::Parser;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "audiocast-server", about = "AudioCasting Server - Stream PC audio to Android devices")]
+#[command(name = "devicelink-server", about = "DeviceLink Server - Stream PC audio to Android devices")]
 pub struct Config {
     /// Server name advertised via mDNS
-    #[arg(long, default_value = "AudioCast Server")]
+    #[arg(long, default_value = "DeviceLink Server")]
     pub name: String,
 
     /// TCP port for audio streaming

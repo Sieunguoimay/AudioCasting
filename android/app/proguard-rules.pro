@@ -1,2 +1,2 @@
 # Keep JSON serialization
--keepclassmembers class com.audiocast.network.** { *; }
+-keepclassmembers class com.devicelink.network.** { *; }

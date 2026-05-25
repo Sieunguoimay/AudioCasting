@@ -10,7 +10,42 @@ android/local.properties
 android/.idea/
 *.iml
 
+# Python
+__pycache__/
+*.pyc
+
+# Build outputs
+build/
+dist/
+installer_output/
+
+# Runtime artifacts
+devicelink_files/
+*.log
+connection_history.json
+
+# Root-level binaries (don't track stale copies)
+/*.exe
+
+# Memory compiler runtime state
+scripts/state.json
+scripts/last-flush.json
+scripts/flush.log
+scripts/compile.log
+scripts/session-flush-*
+scripts/flush-context-*
+daily/
+knowledge/
+reports/
+.venv/
+.obsidian/
+
+# Cloned repo (integrated into project root)
+claude-memory-compiler/
+
 # OS
 .DS_Store
 Thumbs.db
 *.swp
+*.lnk
+*.zip

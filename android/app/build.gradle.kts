@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.audiocast"
+    namespace = "com.devicelink"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.audiocast"
+        applicationId = "com.devicelink"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

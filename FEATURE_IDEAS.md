@@ -1,15 +1,15 @@
-# AudioCast - Feature Ideas
+# DeviceLink - Feature Ideas
 
 ## Quick wins (low effort, high value)
 
-| Feature | Description |
-|---|---|
-| **Audio visualizer** | Waveform or VU meter on the desktop GUI showing live audio levels |
-| **Latency display** | Show end-to-end latency (clock sync data is already there) |
-| **Stream recording** | Record streamed audio to WAV/FLAC file on receiver |
-| **Hotkey controls** | Global keyboard shortcuts to mute/volume/stop without opening the window |
-| **Dark/light theme toggle** | Theme switcher in the GUI |
-| **Connection history** | Remember and quick-connect to previously used servers |
+| Feature                     | Description                                                              |
+| --------------------------- | ------------------------------------------------------------------------ |
+| **Audio visualizer**        | Waveform or VU meter on the desktop GUI showing live audio levels        |
+| **Latency display**         | Show end-to-end latency (clock sync data is already there)               |
+| **Stream recording**        | Record streamed audio to WAV/FLAC file on receiver                       |
+| **Hotkey controls**         | Global keyboard shortcuts to mute/volume/stop without opening the window |
+| **Dark/light theme toggle** | Theme switcher in the GUI                                                |
+| **Connection history**      | Remember and quick-connect to previously used servers                    |
 
 ## Medium effort, high value
 

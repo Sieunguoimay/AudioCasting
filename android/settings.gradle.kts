@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AudioCast"
+rootProject.name = "DeviceLink"
 include(":app")

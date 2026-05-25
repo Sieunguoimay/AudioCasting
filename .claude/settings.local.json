@@ -100,7 +100,115 @@
       "Bash(tasklist)",
       "Bash(taskkill /F /PID 52816)",
       "Bash(powershell \"Stop-Process -Name audiocast-server -Force -ErrorAction SilentlyContinue; Start-Sleep 3; cd 'D:\\\\Vuduydu\\\\PersonalProjects\\\\AudioCasting\\\\server'; cargo build --release 2>&1 | Select-Object -Last 3\")",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''AudioCast GUI.py'', doraise=True\\)\")"
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''AudioCast GUI.py'', doraise=True\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(RUST_LOG=info ./target/release/audiocast-server.exe --name \"TestPC\" --port 4953 --codec pcm --no-tray)",
+      "Bash(curl -s http://localhost:4954/api/messages)",
+      "Bash(curl -s http://localhost:4954/api/status)",
+      "Bash(RUST_LOG=info target/release/audiocast-server.exe --name \"TestPC\" --port 4953 --codec pcm --no-tray)",
+      "Bash(cmd.exe /c \"set RUST_LOG=info && start /b target\\\\\\\\release\\\\\\\\audiocast-server.exe --name TestPC --port 4953 --codec pcm --no-tray\")",
+      "Bash(./gradlew installDebug)",
+      "Bash(curl:*)",
+      "Bash(powershell -Command 'Get-Process | Where-Object { $_.Path -like '\\\\''*audiocast*'\\\\'' } | Select-Object Id,Path')",
+      "Bash(taskkill //F //PID 56856)",
+      "Bash(cmd.exe /c \"start /b target\\\\\\\\release\\\\\\\\audiocast-server.exe --name TestPC --port 4953 --codec pcm --no-tray\")",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(D:/Vuduydu/PersonalProjects/AudioCasting/audiocast-server.exe --help)",
+      "Bash(cmd.exe /c \"D:\\\\\\\\Vuduydu\\\\\\\\PersonalProjects\\\\\\\\AudioCasting\\\\\\\\audiocast-server.exe --help\")",
+      "Bash(cmd.exe /c \"D:\\\\\\\\Vuduydu\\\\\\\\PersonalProjects\\\\\\\\AudioCasting\\\\\\\\installer_output\\\\\\\\audiocast-server.exe --help\")",
+      "Bash(powershell:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(ipconfig)",
+      "Bash(pyinstaller audiocast.spec --noconfirm)",
+      "Bash([ -f \"/c/Program Files \\(x86\\)/Inno Setup 6/ISCC.exe\" ])",
+      "Bash(\"/c/Program Files \\(x86\\)/Inno Setup 6/ISCC.exe\" installer.iss)",
+      "Bash([ -f \"/c/Program Files/Inno Setup 6/ISCC.exe\" ])",
+      "Bash(\"/c/Program Files/Inno Setup 6/ISCC.exe\" installer.iss)",
+      "Bash(explorer.exe D:\\\\Vuduydu\\\\PersonalProjects\\\\AudioCasting\\\\android\\\\app\\\\build\\\\outputs\\\\apk\\\\debug:*)",
+      "Bash(./gradlew --version)",
+      "Bash(adb devices:*)",
+      "Bash($ADB devices:*)",
+      "Bash(python -c \"import py_compile; import glob; files = glob.glob\\('gui/*.py'\\); errors = []; [errors.append\\(f\\) if py_compile.compile\\(f, doraise=True\\) is None else None for f in files]; print\\('All files compile OK'\\)\")",
+      "Bash(python -m py_compile gui/colors.py)",
+      "Bash(python -m py_compile gui/widgets.py)",
+      "Bash(python -m py_compile gui/messaging_server.py)",
+      "Bash(python -m py_compile gui/dashboard.py)",
+      "Bash(python -c \"import gui; print\\('Import OK'\\)\")",
+      "Bash(python -c \"from gui.app import DeviceLinkApp; print\\('GUI import OK'\\)\")",
+      "Bash(taskkill //F //IM devicelink-server.exe)",
+      "Bash(rm src/web_ui.rs src/unified.rs src/system_tray.rs)",
+      "Bash(rm -rf static/)",
+      "Bash(git clone:*)",
+      "Bash(cp -r claude-memory-compiler/hooks .)",
+      "Bash(cp -r claude-memory-compiler/scripts .)",
+      "Bash(cp claude-memory-compiler/AGENTS.md .)",
+      "Bash(cp claude-memory-compiler/pyproject.toml .)",
+      "Bash(cp claude-memory-compiler/uv.lock .)",
+      "Bash(uv sync:*)",
+      "Bash(where uv:*)",
+      "Bash(pip show:*)",
+      "Bash(python -c \"import shutil; print\\(shutil.which\\('uv'\\)\\)\")",
+      "Bash(uv run:*)",
+      "Bash(xargs wc:*)",
+      "Bash(rm -rf gui/)",
+      "Bash(rm -f requirements.txt audiocast.log installer.iss \"AudioCast GUI.lnk\" \"AudioCast Server.lnk\" \"AudioCast.lnk\")",
+      "Bash(mv audio_capture.rs audio/capture.rs)",
+      "Bash(mv audio_playback.rs audio/playback.rs)",
+      "Bash(mv encoder.rs audio/encoder.rs)",
+      "Bash(mv decoder.rs audio/decoder.rs)",
+      "Bash(mv server.rs network/server.rs)",
+      "Bash(python3:*)",
+      "Bash(wc:*)",
+      "Bash(du -sh /d/Vuduydu/PersonalProjects/AudioCasting/*/)",
+      "Bash(find /d/Vuduydu/PersonalProjects/AudioCasting/server/src -name \"*.rs\" -exec wc -l {} \\\\;)",
+      "Bash(find /d/Vuduydu/PersonalProjects/AudioCasting/android/app/src/main/java -name \"*.kt\" -exec wc -l {} \\\\;)",
+      "Bash(grep -E \"\\\\.\\(py|md|toml|lock\\)$\")",
+      "Bash(python -c \"import sys,json; [print\\(json.dumps\\(json.loads\\(l\\), indent=2\\)[:2000]\\) for l in sys.stdin]\")",
+      "Bash(python:*)",
+      "Bash(du -sh /d/Vuduydu/PersonalProjects/AudioCasting/*)",
+      "Bash(rm -rf build/ dist/ installer_output/ audiocast_files/ __pycache__/)",
+      "Bash(rm -f AudioCast-Portable-1.0.0.zip audiocast-server.exe connection_history.json devicelink.spec build_installer.bat)",
+      "Bash(findstr /R \"^?? \")",
+      "Bash(git check-ignore *)",
+      "Bash(git add *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python hooks/session-start.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python hooks/pre-compact.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python hooks/session-end.py",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
